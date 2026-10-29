@@ -8,7 +8,11 @@ out (or doubtful / questionable / game-time decisions). Bench players are ignore
 - Email: Resend (or Gmail).
 - "Starter" = a player who started at least 2 of the team's last 5 games.
 - Games that tip off at the same time are combined into one email.
-- No email is sent for a game where every starter is available
+- Each email also shows the game's **schedule spot** from the Fade Calendar
+  (back-to-backs, road trips, travel, altitude) and links to the calendar.
+  "Bet against" and "consider betting against" games always get an email,
+  even when no starters are out.
+- No email is sent for a game with no starters out and no schedule edge
   (set the variable `ALWAYS_EMAIL` to `true` to get one for every game anyway).
 
 ## Setup (one time)
@@ -37,3 +41,9 @@ which needs 2-step verification).
 
 Keep the repo **public**: running every 5 minutes is free and unlimited on public repos,
 but would use up the free minutes on a private one. Nothing secret is stored in the code.
+
+## Fade ratings
+
+`fade/` holds the season schedule and the Fade Calendar scoring. If the schedule
+changes (for example when the NBA Cup games are set), update
+`fade/schedule-2026-27.csv` and run `python3 fade/analyze.py` to rebuild `fade/fade.json`.

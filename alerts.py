@@ -200,6 +200,30 @@ def send_email(subject, body):
 
 # ---------- main ----------
 
+# ---------- schedule fade ratings (from the Fade Calendar) ----------
+
+FADE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fade", "fade.json")
+CALENDAR_URL = "https://claude.ai/code/artifact/93be9cf2-31bb-4576-8b92-160e6f8b8d36"
+# ESPN abbreviations that differ from the schedule file's
+ESPN_TO_SCHED = {"GS": "GSW", "NY": "NYK", "SA": "SAS", "NO": "NOP", "UTAH": "UTA", "WSH": "WAS"}
+_fade = None
+
+
+def fade_for(away_abbr, home_abbr, tip):
+    global _fade
+    if _fade is None:
+        try:
+            with open(FADE_FILE) as f:
+                _fade = json.load(f)
+        except Exception as exc:  # noqa: BLE001
+            print(f"fade ratings unavailable: {exc}")
+            _fade = {}
+    a = ESPN_TO_SCHED.get(away_abbr, away_abbr)
+    h = ESPN_TO_SCHED.get(home_abbr, home_abbr)
+    day = tip.astimezone(ZoneInfo("America/New_York")).date().isoformat()
+    return _fade.get(f"{day} {a} {h}"), a, h
+
+
 def build_report(ev, tip):
     comp = ev["competitions"][0]
     teams = {c["homeAway"]: c["team"] for c in comp["competitors"]}
@@ -207,7 +231,7 @@ def build_report(ev, tip):
     injuries = team_injuries(ev["id"])
     recent = recent_completed_games([away["id"], home["id"]], tip)
 
-    lines, flagged = [], 0
+    lines, flagged, out_by_team = [], 0, {}
     for side in (away, home):
         starters, sample = starters_for(side["id"], recent[side["id"]])
         hits = []
@@ -225,16 +249,46 @@ def build_report(ev, tip):
                   + ", ".join(f"{(i.get('athlete') or {}).get('displayName')}={i.get('status')}"
                               for i in injuries.get(side["id"], [])))
         flagged += len(hits)
+        out_by_team[side["abbreviation"]] = len(hits)
         lines.append(f"{side['displayName']}:")
         if not sample:
             lines.append("  (no completed games yet to tell who the starters are)")
         lines.extend(hits or ["  All regular starters available"])
         lines.append("")
 
+    # Schedule spot from the Fade Calendar
+    rec, a_s, h_s = fade_for(away["abbreviation"], home["abbreviation"], tip)
+    fade_tier, fade_team = None, None
+    if rec:
+        f = rec.get("fade")
+        lines.append("Schedule spot (Fade Calendar):")
+        if f:
+            fade_tier = f["tier"]
+            espn_abbr = {a_s: away["abbreviation"], h_s: home["abbreviation"]}
+            fade_team = espn_abbr.get(f["team"], f["team"])
+            fade_name = away["displayName"] if fade_team == away["abbreviation"] else home["displayName"]
+            label = "BET AGAINST" if fade_tier == "strong" else "CONSIDER BETTING AGAINST"
+            lines.append(f"  {label} the {fade_name} (edge {f['edge']})")
+        else:
+            lines.append("  No schedule edge either way")
+        for side, key in ((away, "away"), (home, "home")):
+            info = rec.get(key) or {}
+            if info.get("why"):
+                lines.append(f"  {side['abbreviation']} strain {info['pts']}: " + ", ".join(info["why"]))
+        if fade_team:
+            other = home["abbreviation"] if fade_team == away["abbreviation"] else away["abbreviation"]
+            if out_by_team.get(fade_team):
+                lines.append(f"  >> Both signals agree: {fade_team} is tired AND missing starters.")
+            if out_by_team.get(other):
+                lines.append(f"  >> Caution: {other} is missing starters too, which weakens the fade.")
+        lines.append(f"  Calendar: {CALENDAR_URL}")
+    else:
+        lines.append("Schedule spot: not on the Fade Calendar (e.g. an NBA Cup game)")
+
     local = tip.astimezone(TIMEZONE)
     title = f"{away['abbreviation']} @ {home['abbreviation']}"
     header = f"{away['displayName']} at {home['displayName']}, tipoff {local.strftime('%-I:%M %p %Z')}"
-    return title, header, "\n".join(lines).rstrip(), flagged
+    return title, header, "\n".join(lines).rstrip(), flagged, fade_tier, fade_team
 
 
 def main():
@@ -293,21 +347,27 @@ def main():
     for tip, evs in by_tip.items():
         sections, titles, total = [], [], 0
         for ev in evs:
-            title, header, body, flagged = build_report(ev, tip)
+            title, header, body, flagged, fade_tier, fade_team = build_report(ev, tip)
             total += flagged
-            if flagged or ALWAYS_EMAIL or test_mode:
-                titles.append(title + (f" ({flagged} starter{'s' if flagged > 1 else ''} on report)" if flagged else ""))
+            if flagged or fade_tier or ALWAYS_EMAIL or test_mode:
+                tags = []
+                if fade_tier:
+                    tags.append(("BET AGAINST " if fade_tier == "strong" else "consider fading ") + fade_team)
+                if flagged:
+                    tags.append(f"{flagged} starter{'s' if flagged > 1 else ''} on report")
+                titles.append(title + (f" ({'; '.join(tags)})" if tags else ""))
                 sections.append(f"{header}\n{'-' * len(header)}\n{body}")
         if sections:
             local = tip.astimezone(TIMEZONE).strftime("%-I:%M %p")
-            subject = ("[TEST] " if test_mode else "") + f"Starters out, {local} tip: " + ", ".join(titles)
+            subject = ("[TEST] " if test_mode else "") + f"Pregame alert, {local} tip: " + ", ".join(titles)
             footer = ("\n\nStarters = players who started at least 40% of the team's last 5 games. "
-                      "Statuses are from ESPN's injury report at send time.")
+                      "Statuses are from ESPN's injury report at send time. "
+                      "Schedule spots come from the Fade Calendar (rest, travel, road trips, altitude).")
             if test_mode:
                 print(subject + "\n" + "\n\n".join(sections))
             send_email(subject, "\n\n".join(sections) + footer)
         else:
-            print(f"no starters out for {tip.isoformat()} games; no email")
+            print(f"no starters out and no fade spot for {tip.isoformat()} games; no email")
         if not test_mode:
             for ev in evs:
                 state[ev["id"]] = now.isoformat()
