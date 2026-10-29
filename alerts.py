@@ -218,6 +218,12 @@ def build_report(ev, tip):
                 name, n = starters[aid]
                 reason = injury_reason(inj)
                 hits.append(f"  - {name}: {label}" + (f" ({reason})" if reason else "") + f"  [started {n} of last {sample}]")
+        if "--test" in sys.argv:
+            print(f"[debug] {side['abbreviation']} starters from last {sample} games: "
+                  + ", ".join(f"{n} ({c})" for n, c in starters.values()))
+            print(f"[debug] {side['abbreviation']} injury report: "
+                  + ", ".join(f"{(i.get('athlete') or {}).get('displayName')}={i.get('status')}"
+                              for i in injuries.get(side["id"], [])))
         flagged += len(hits)
         lines.append(f"{side['displayName']}:")
         if not sample:
