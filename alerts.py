@@ -286,6 +286,8 @@ def main():
             subject = ("[TEST] " if test_mode else "") + f"Starters out, {local} tip: " + ", ".join(titles)
             footer = ("\n\nStarters = players who started at least 40% of the team's last 5 games. "
                       "Statuses are from ESPN's injury report at send time.")
+            if test_mode:
+                print(subject + "\n" + "\n\n".join(sections))
             send_email(subject, "\n\n".join(sections) + footer)
         else:
             print(f"no starters out for {tip.isoformat()} games; no email")
