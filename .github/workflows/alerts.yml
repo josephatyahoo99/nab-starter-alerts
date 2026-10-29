@@ -9,6 +9,10 @@ on:
         description: "Send a test email for the next game right now"
         type: boolean
         default: false
+      team:
+        description: "Test only: team to report on, e.g. OKC or Thunder (blank = next game)"
+        type: string
+        default: ""
 
 permissions:
   contents: write
@@ -34,6 +38,7 @@ jobs:
           ALERT_TO: ${{ secrets.ALERT_TO }}
           ALERT_TIMEZONE: ${{ vars.ALERT_TIMEZONE }}
           ALWAYS_EMAIL: ${{ vars.ALWAYS_EMAIL }}
+          TEST_TEAM: ${{ inputs.team }}
         run: python alerts.py ${{ inputs.test && '--test' || '' }}
       - name: Remember which games were alerted
         if: ${{ !inputs.test }}

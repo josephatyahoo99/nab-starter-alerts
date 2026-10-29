@@ -265,9 +265,19 @@ def main():
             due.append((tip, ev))
     due.sort(key=lambda x: x[0])
     if test_mode:
+        team = (os.environ.get("TEST_TEAM") or "").strip().lower()
+        if team:
+            def matches(ev):
+                for c in ev["competitions"][0]["competitors"]:
+                    t = c["team"]
+                    names = [t.get("abbreviation", ""), t.get("displayName", ""), t.get("name", ""), t.get("shortDisplayName", "")]
+                    if any(team == n.lower() or (len(team) > 3 and team in n.lower()) for n in names if n):
+                        return True
+                return False
+            due = [d for d in due if matches(d[1])]
         due = due[:1]
         if not due:
-            print("test mode: no upcoming games found today or tomorrow")
+            print(f"test mode: no upcoming game found today or tomorrow for {os.environ.get('TEST_TEAM') or 'any team'}")
             return
 
     if not due:
