@@ -233,6 +233,9 @@ def build_report(ev, tip):
 
 def main():
     test_mode = "--test" in sys.argv
+    if not (os.environ.get("RESEND_API_KEY") or os.environ.get("GMAIL_APP_PASSWORD")):
+        print("No email settings yet: add the RESEND_API_KEY and ALERT_TO secrets (see README).")
+        return
     now = datetime.now(timezone.utc)
     state = {}
     if os.path.exists(STATE_FILE):
