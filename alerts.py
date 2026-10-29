@@ -299,11 +299,8 @@ def build_report(ev, tip):
     return title, header, "\n".join(lines).rstrip(), flagged, fade_tier, fade_team, bet_on
 
 
-def main():
-    test_mode = "--test" in sys.argv
-    if not (os.environ.get("RESEND_API_KEY") or os.environ.get("GMAIL_APP_PASSWORD")):
-        print("No email settings yet: add the RESEND_API_KEY and ALERT_TO secrets (see README).")
-        return
+def run_once(test_mode):
+    """Send alerts that are due now. Returns tipoff times of games not alerted yet."""
     now = datetime.now(timezone.utc)
     state = {}
     if os.path.exists(STATE_FILE):
@@ -341,11 +338,11 @@ def main():
         due = due[:1]
         if not due:
             print(f"test mode: no upcoming game found soon for {os.environ.get('TEST_TEAM') or 'any team'}")
-            return
+            return []
 
     if not due:
         print(f"{now.isoformat()}: no games tipping off within {WINDOW_MINUTES} minutes")
-        return
+        return pending_tips(events, state, now)
 
     # One email per tipoff time, so a 7:00 slate with five games is one email.
     by_tip = {}
@@ -388,6 +385,47 @@ def main():
         os.makedirs(os.path.dirname(STATE_FILE), exist_ok=True)
         with open(STATE_FILE, "w") as f:
             json.dump(state, f, indent=1, sort_keys=True)
+    return [] if test_mode else pending_tips(events, state, now)
+
+
+def pending_tips(events, state, now):
+    tips = []
+    for ev in events.values():
+        if ev["status"]["type"].get("state") == "pre" and ev["id"] not in state:
+            tip = parse_time(ev["date"])
+            if tip > now:
+                tips.append(tip)
+    return sorted(tips)
+
+
+# GitHub only starts scheduled runs every 30 to 60 minutes, not every 5.
+# So each run stays awake and sends alerts at the right minute for any game
+# tipping off in the next couple of hours.
+LOOKAHEAD_MINUTES = 150
+MAX_RUN_MINUTES = 320
+
+
+def main():
+    test_mode = "--test" in sys.argv
+    if not (os.environ.get("RESEND_API_KEY") or os.environ.get("GMAIL_APP_PASSWORD")):
+        print("No email settings yet: add the RESEND_API_KEY and ALERT_TO secrets (see README).")
+        return
+    started = datetime.now(timezone.utc)
+    while True:
+        tips = run_once(test_mode)
+        if test_mode or not tips:
+            return
+        now = datetime.now(timezone.utc)
+        send_at = tips[0] - timedelta(minutes=LEAD_MINUTES)
+        wait = max(0.0, (send_at - now).total_seconds())
+        if wait > LOOKAHEAD_MINUTES * 60:
+            print(f"next game tips at {tips[0].isoformat()}; a later run will handle it")
+            return
+        if (now - started).total_seconds() + wait > MAX_RUN_MINUTES * 60:
+            print("run time limit reached; a later run will continue")
+            return
+        print(f"waiting {wait / 60:.1f} min to send the {tips[0].astimezone(TIMEZONE).strftime('%-I:%M %p')} alert")
+        time.sleep(wait + 5)
 
 
 if __name__ == "__main__":

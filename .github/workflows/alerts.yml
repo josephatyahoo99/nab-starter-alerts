@@ -24,7 +24,7 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 340
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -48,4 +48,5 @@ jobs:
           git add state/sent.json 2>/dev/null || exit 0
           git diff --cached --quiet && exit 0
           git commit -m "Record alerted games"
+          git pull --rebase origin main
           git push
