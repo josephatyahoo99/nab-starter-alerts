@@ -27,8 +27,8 @@ LEAD_MINUTES = int(os.environ.get("LEAD_MINUTES", "45"))
 # Send when tipoff is this many minutes away or less (covers GitHub's cron delays).
 WINDOW_MINUTES = LEAD_MINUTES + 3
 TIMEZONE = ZoneInfo(os.environ.get("ALERT_TIMEZONE") or "America/New_York")
-# "true" = email every game even when no starter is out.
-ALWAYS_EMAIL = (os.environ.get("ALWAYS_EMAIL") or "false").lower() == "true"
+# Email every game, even when no starter is out (set ALWAYS_EMAIL=false to only get flagged games).
+ALWAYS_EMAIL = (os.environ.get("ALWAYS_EMAIL") or "true").lower() == "true"
 # How many recent games decide who counts as a starter.
 SAMPLE_GAMES = 5
 # A player counts as a starter if he started at least this share of those games.
@@ -258,7 +258,7 @@ def build_report(ev, tip):
 
     # Schedule spot from the Fade Calendar
     rec, a_s, h_s = fade_for(away["abbreviation"], home["abbreviation"], tip)
-    fade_tier, fade_team = None, None
+    fade_tier, fade_team, bet_on = None, None, None
     if rec:
         f = rec.get("fade")
         lines.append("Schedule spot (Fade Calendar):")
@@ -269,6 +269,14 @@ def build_report(ev, tip):
             fade_name = away["displayName"] if fade_team == away["abbreviation"] else home["displayName"]
             label = "BET AGAINST" if fade_tier == "strong" else "CONSIDER BETTING AGAINST"
             lines.append(f"  {label} the {fade_name} (edge {f['edge']})")
+            # Green "bet on": the opponent, only if it is rested itself.
+            opp_key = "home" if fade_team == away["abbreviation"] else "away"
+            opp_side = home if opp_key == "home" else away
+            opp_info = rec.get(opp_key) or {}
+            opp_b2b = any("back-to-back" in w for w in opp_info.get("why", []))
+            if opp_info.get("pts", 99) <= 2 and not opp_b2b:
+                bet_on = opp_side["abbreviation"]
+                lines.append(f"  BET ON the {opp_side['displayName']} (rested, strain {opp_info.get('pts', 0)})")
         else:
             lines.append("  No schedule edge either way")
         for side, key in ((away, "away"), (home, "home")):
@@ -288,7 +296,7 @@ def build_report(ev, tip):
     local = tip.astimezone(TIMEZONE)
     title = f"{away['abbreviation']} @ {home['abbreviation']}"
     header = f"{away['displayName']} at {home['displayName']}, tipoff {local.strftime('%-I:%M %p %Z')}"
-    return title, header, "\n".join(lines).rstrip(), flagged, fade_tier, fade_team
+    return title, header, "\n".join(lines).rstrip(), flagged, fade_tier, fade_team, bet_on
 
 
 def main():
@@ -347,12 +355,14 @@ def main():
     for tip, evs in by_tip.items():
         sections, titles, total = [], [], 0
         for ev in evs:
-            title, header, body, flagged, fade_tier, fade_team = build_report(ev, tip)
+            title, header, body, flagged, fade_tier, fade_team, bet_on = build_report(ev, tip)
             total += flagged
             if flagged or fade_tier or ALWAYS_EMAIL or test_mode:
                 tags = []
                 if fade_tier:
                     tags.append(("BET AGAINST " if fade_tier == "strong" else "consider fading ") + fade_team)
+                if bet_on:
+                    tags.append("bet on " + bet_on)
                 if flagged:
                     tags.append(f"{flagged} starter{'s' if flagged > 1 else ''} on report")
                 titles.append(title + (f" ({'; '.join(tags)})" if tags else ""))

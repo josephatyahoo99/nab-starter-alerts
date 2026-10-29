@@ -13,7 +13,7 @@ out (or doubtful / questionable / game-time decisions). Bench players are ignore
   "Bet against" and "consider betting against" games always get an email,
   even when no starters are out.
 - No email is sent for a game with no starters out and no schedule edge
-  (set the variable `ALWAYS_EMAIL` to `true` to get one for every game anyway).
+  (every game gets an email by default; set the variable `ALWAYS_EMAIL` to `false` to only get flagged games).
 
 ## Setup (one time)
 
@@ -28,7 +28,7 @@ Email is sent with **Resend** (free, 100 emails a day, no 2-step verification ne
    - `ALERT_TO`: the email address you signed up to Resend with
 3. **Optional variables** (same page, "Variables" tab):
    - `ALERT_TIMEZONE`: e.g. `America/Chicago` (default `America/New_York`)
-   - `ALWAYS_EMAIL`: `true` to email every game even when nobody is out
+   - `ALWAYS_EMAIL`: `false` to only get emails for games with a starter out or a schedule edge
 4. **Test it.** Actions tab → "Starter injury alerts" → Run workflow → tick
    "Send a test email" → Run. Check your inbox (and spam the first time).
 
