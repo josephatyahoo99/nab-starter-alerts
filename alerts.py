@@ -251,7 +251,8 @@ def main():
     # Today's and tomorrow's games (late West Coast games fall on the next UTC day).
     events = {}
     local_today = now.astimezone(TIMEZONE).date()
-    for day in (local_today, local_today + timedelta(days=1)):
+    days_ahead = 7 if test_mode and os.environ.get("TEST_TEAM") else 1
+    for day in (local_today + timedelta(days=i) for i in range(days_ahead + 1)):
         for ev in scoreboard(day).get("events", []):
             events[ev["id"]] = ev
 
@@ -277,7 +278,7 @@ def main():
             due = [d for d in due if matches(d[1])]
         due = due[:1]
         if not due:
-            print(f"test mode: no upcoming game found today or tomorrow for {os.environ.get('TEST_TEAM') or 'any team'}")
+            print(f"test mode: no upcoming game found soon for {os.environ.get('TEST_TEAM') or 'any team'}")
             return
 
     if not due:
