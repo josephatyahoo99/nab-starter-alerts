@@ -27,6 +27,9 @@ jobs:
     timeout-minutes: 340
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Always use the latest saved state, not the code as it was when this run was queued
+          ref: main
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -36,6 +39,7 @@ jobs:
           GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           ALERT_TO: ${{ secrets.ALERT_TO }}
+          PYTHONUNBUFFERED: "1"
           ALERT_TIMEZONE: ${{ vars.ALERT_TIMEZONE }}
           ALWAYS_EMAIL: ${{ vars.ALWAYS_EMAIL }}
           TEST_TEAM: ${{ inputs.team }}
@@ -45,8 +49,16 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add state/sent.json 2>/dev/null || exit 0
-          git diff --cached --quiet && exit 0
-          git commit -m "Record alerted games"
-          git pull --rebase origin main
-          git push
+          cp state/sent.json /tmp/mine.json
+          for attempt in 1 2 3 4; do
+            git fetch -q origin main
+            git reset -q --hard origin/main
+            # Merge this run's record with whatever is saved now, so no alert is forgotten
+            python3 -c "import json;a=json.load(open('state/sent.json'));b=json.load(open('/tmp/mine.json'));a.update(b);json.dump(a,open('state/sent.json','w'),indent=1,sort_keys=True)"
+            git add state/sent.json
+            git diff --cached --quiet && exit 0
+            git commit -qm "Record alerted games"
+            git push -q origin HEAD:main && exit 0
+            sleep $((attempt * 3))
+          done
+          exit 1
